@@ -55,14 +55,22 @@ export default function WeeklyTimetable({ space, role, userId }) {
     const existing = getCell(dateStr, period);
 
     if (existing) {
-      if (existing.user_id === userId && existing.status === "pending") {
-        if (!window.confirm("예약을 취소하시겠습니까?")) return;
+      // 본인 pending 예약 → 취소
+      if (existing.is_mine && existing.status === "pending") {
+        if (!confirm("예약을 취소하시겠습니까?")) return;
+        // 취소하려면 실제 예약 ID가 필요 — 취소 전용 API 호출
         try {
-          await cancelReservation(existing.id);
-          enqueueSnackbar("🗑️ 예약이 취소됐어요", { variant: "info" });
-          fetchReservations();
+          const { getReservations } = await import("../api/reservations");
+          const { data: myList } = await getReservations();
+          const mine = myList.find(
+            (r) => r.space_id === space.id && r.date === dateStr && r.period === period && r.status === "pending"
+          );
+          if (mine) {
+            await cancelReservation(mine.id);
+            fetchReservations();
+          }
         } catch (err) {
-          enqueueSnackbar(`❌ ${err.response?.data?.detail || "취소 실패"}`, { variant: "error" });
+          alert(err.response?.data?.detail || "취소 실패");
         }
       }
       return;
@@ -79,14 +87,19 @@ export default function WeeklyTimetable({ space, role, userId }) {
     }
   };
 
-  const prevWeek = () => { const d = new Date(baseDate); d.setDate(d.getDate() - 7); setBaseDate(d); };
-  const nextWeek = () => { const d = new Date(baseDate); d.setDate(d.getDate() + 7); setBaseDate(d); };
+  const cellStyle = (cell) => {
+    if (!cell) return "bg-white hover:bg-blue-50 cursor-pointer text-gray-400 text-xs";
+    const { status, is_mine } = cell;
+    if (status === "approved") return `bg-red-100 text-red-700 text-xs font-medium ${is_mine ? "cursor-pointer" : "cursor-default"}`;
+    if (status === "pending") return `bg-yellow-100 text-yellow-700 text-xs font-medium ${is_mine ? "cursor-pointer" : "cursor-default"}`;
+    return "bg-gray-100 text-gray-400 text-xs cursor-default";
+  };
 
-  const cellColor = (cell) => {
-    if (!cell) return { bg: "rgba(255,255,255,0.6)", color: "#3182F6", cursor: role === "student" ? "pointer" : "default" };
-    if (cell.status === "approved") return { bg: "rgba(240,68,82,0.12)", color: "#F04452", cursor: "default" };
-    if (cell.status === "pending") return { bg: "rgba(255,168,0,0.15)", color: "#FF8A00", cursor: role === "student" ? "pointer" : "default" };
-    return { bg: "rgba(0,0,0,0.04)", color: "#8B95A1", cursor: "default" };
+  const cellText = (cell) => {
+    if (!cell) return "예약가능";
+    if (cell.status === "approved") return cell.is_mine ? "예약완료(나)" : "예약완료";
+    if (cell.status === "pending") return cell.is_mine ? "대기중(나)" : "대기중";
+    return "-";
   };
 
   const cellText = (cell) => {

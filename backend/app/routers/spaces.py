@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List
+from datetime import date
 from ..database import get_db
 from .. import models, schemas
 from ..dependencies import get_current_user, require_teacher
@@ -11,6 +12,35 @@ router = APIRouter(prefix="/api/spaces", tags=["spaces"])
 @router.get("", response_model=List[schemas.SpaceOut])
 def list_spaces(db: Session = Depends(get_db), _=Depends(get_current_user)):
     return db.query(models.Space).all()
+
+
+@router.get("/{space_id}/availability", response_model=List[schemas.SlotAvailability])
+def get_space_availability(
+    space_id: int,
+    from_date: date = Query(..., alias="from"),
+    to_date: date = Query(..., alias="to"),
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    rows = (
+        db.query(models.Reservation)
+        .filter(
+            models.Reservation.space_id == space_id,
+            models.Reservation.date >= from_date,
+            models.Reservation.date <= to_date,
+            models.Reservation.status.in_(["pending", "approved"]),
+        )
+        .all()
+    )
+    return [
+        schemas.SlotAvailability(
+            date=r.date,
+            period=r.period,
+            status=r.status,
+            is_mine=(r.user_id == user.id),
+        )
+        for r in rows
+    ]
 
 
 @router.get("/{space_id}", response_model=schemas.SpaceOut)
