@@ -1,24 +1,17 @@
 import { useState, useEffect } from "react";
+import { Box, Paper, Typography, Chip, IconButton, Tooltip, CircularProgress } from "@mui/material";
+import { ChevronLeft, ChevronRight } from "@mui/icons-material";
+import { useSnackbar } from "notistack";
 import { getReservations, createReservation, cancelReservation } from "../api/reservations";
+import { PERIODS, TIME_SLOTS } from "../constants/timeSlots";
 
-const PERIODS = [1, 2, 3, 4, 5, 6, 7, 8];
-const PERIOD_LABELS = {
-  1: "1교시 (09:00)",
-  2: "2교시 (10:00)",
-  3: "3교시 (11:00)",
-  4: "4교시 (12:00)",
-  5: "5교시 (13:00)",
-  6: "6교시 (14:00)",
-  7: "7교시 (15:00)",
-  8: "8교시 (16:00)",
-};
+const DAY_LABELS = ["월", "화", "수", "목", "금"];
 
-function getWeekDates(baseDate) {
-  const date = new Date(baseDate);
-  const day = date.getDay(); // 0=일, 1=월 ...
+function getWeekDates(base) {
+  const date = new Date(base);
+  const day = date.getDay();
   const monday = new Date(date);
   monday.setDate(date.getDate() - (day === 0 ? 6 : day - 1));
-
   return Array.from({ length: 5 }, (_, i) => {
     const d = new Date(monday);
     d.setDate(monday.getDate() + i);
@@ -30,28 +23,25 @@ function toDateStr(date) {
   return date.toISOString().split("T")[0];
 }
 
-const DAY_LABELS = ["월", "화", "수", "목", "금"];
+function isToday(date) {
+  return toDateStr(date) === toDateStr(new Date());
+}
 
 export default function WeeklyTimetable({ space, role, userId }) {
+  const { enqueueSnackbar } = useSnackbar();
   const [baseDate, setBaseDate] = useState(new Date());
   const [reservations, setReservations] = useState([]);
   const [loading, setLoading] = useState(false);
-
   const weekDates = getWeekDates(baseDate);
 
-  useEffect(() => {
-    fetchReservations();
-  }, [space, baseDate]);
+  useEffect(() => { fetchReservations(); }, [space?.id, baseDate]);
 
   const fetchReservations = async () => {
     setLoading(true);
     try {
       const { data } = await getReservations();
-      // 해당 공간 + 이번 주 예약만 필터
       const weekStrs = weekDates.map(toDateStr);
-      setReservations(
-        data.filter((r) => r.space_id === space.id && weekStrs.includes(r.date))
-      );
+      setReservations(data.filter((r) => r.space_id === space.id && weekStrs.includes(r.date)));
     } finally {
       setLoading(false);
     }
@@ -65,108 +55,135 @@ export default function WeeklyTimetable({ space, role, userId }) {
     const existing = getCell(dateStr, period);
 
     if (existing) {
-      // 본인 pending 예약 → 취소
       if (existing.user_id === userId && existing.status === "pending") {
-        if (!confirm("예약을 취소하시겠습니까?")) return;
-        await cancelReservation(existing.id);
-        fetchReservations();
+        if (!window.confirm("예약을 취소하시겠습니까?")) return;
+        try {
+          await cancelReservation(existing.id);
+          enqueueSnackbar("🗑️ 예약이 취소됐어요", { variant: "info" });
+          fetchReservations();
+        } catch (err) {
+          enqueueSnackbar(`❌ ${err.response?.data?.detail || "취소 실패"}`, { variant: "error" });
+        }
       }
       return;
     }
 
-    // 빈 셀 → 예약 신청
-    if (!confirm(`${space.name} | ${dateStr} | ${PERIOD_LABELS[period]} 예약 신청하시겠습니까?`)) return;
+    const slot = TIME_SLOTS[period];
+    if (!window.confirm(`📍 ${space.name}\n🗓 ${dateStr}\n⏰ ${slot.label} ${slot.time}\n\n예약 신청할까요?`)) return;
     try {
       await createReservation({ space_id: space.id, date: dateStr, period });
+      enqueueSnackbar("✅ 예약 신청 완료! 선생님 승인을 기다려주세요", { variant: "success" });
       fetchReservations();
     } catch (err) {
-      alert(err.response?.data?.detail || "예약 실패");
+      enqueueSnackbar(`❌ ${err.response?.data?.detail || "예약 실패"}`, { variant: "error" });
     }
   };
 
-  const cellStyle = (cell) => {
-    if (!cell) return "bg-white hover:bg-blue-50 cursor-pointer text-gray-400 text-xs";
-    const s = cell.status;
-    if (s === "approved") return "bg-red-100 text-red-700 text-xs font-medium cursor-default";
-    if (s === "pending") return "bg-yellow-100 text-yellow-700 text-xs font-medium cursor-pointer";
-    return "bg-gray-100 text-gray-400 text-xs cursor-default";
+  const prevWeek = () => { const d = new Date(baseDate); d.setDate(d.getDate() - 7); setBaseDate(d); };
+  const nextWeek = () => { const d = new Date(baseDate); d.setDate(d.getDate() + 7); setBaseDate(d); };
+
+  const cellColor = (cell) => {
+    if (!cell) return { bg: "rgba(255,255,255,0.6)", color: "#3182F6", cursor: role === "student" ? "pointer" : "default" };
+    if (cell.status === "approved") return { bg: "rgba(240,68,82,0.12)", color: "#F04452", cursor: "default" };
+    if (cell.status === "pending") return { bg: "rgba(255,168,0,0.15)", color: "#FF8A00", cursor: role === "student" ? "pointer" : "default" };
+    return { bg: "rgba(0,0,0,0.04)", color: "#8B95A1", cursor: "default" };
   };
 
   const cellText = (cell) => {
-    if (!cell) return "예약가능";
-    if (cell.status === "approved") return "예약완료";
-    if (cell.status === "pending") return "대기중";
-    return "-";
-  };
-
-  const prevWeek = () => {
-    const d = new Date(baseDate);
-    d.setDate(d.getDate() - 7);
-    setBaseDate(d);
-  };
-
-  const nextWeek = () => {
-    const d = new Date(baseDate);
-    d.setDate(d.getDate() + 7);
-    setBaseDate(d);
+    if (!cell) return "🟢 예약가능";
+    if (cell.status === "approved") return "🔴 예약완료";
+    if (cell.status === "pending") return "🟡 대기중";
+    return "⚫ 취소됨";
   };
 
   return (
-    <div className="overflow-x-auto">
+    <Box>
       {/* 주간 네비게이션 */}
-      <div className="flex items-center justify-between mb-3">
-        <button onClick={prevWeek} className="px-3 py-1 border rounded text-sm hover:bg-gray-100">← 이전 주</button>
-        <span className="text-sm font-medium text-gray-700">
+      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 2 }}>
+        <IconButton onClick={prevWeek} size="small"><ChevronLeft /></IconButton>
+        <Typography variant="body2" fontWeight={600} color="text.secondary">
           {toDateStr(weekDates[0])} ~ {toDateStr(weekDates[4])}
-        </span>
-        <button onClick={nextWeek} className="px-3 py-1 border rounded text-sm hover:bg-gray-100">다음 주 →</button>
-      </div>
+        </Typography>
+        <IconButton onClick={nextWeek} size="small"><ChevronRight /></IconButton>
+      </Box>
 
-      {loading && <p className="text-center text-gray-400 text-sm py-4">불러오는 중...</p>}
-
-      {/* 시간표 그리드 */}
-      <table className="w-full border-collapse text-center text-sm">
-        <thead>
-          <tr className="bg-gray-100">
-            <th className="border px-2 py-2 w-28 text-gray-600">교시</th>
-            {weekDates.map((d, i) => (
-              <th key={i} className="border px-2 py-2 text-gray-700">
-                <div>{DAY_LABELS[i]}</div>
-                <div className="text-xs text-gray-400">{toDateStr(d).slice(5)}</div>
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {PERIODS.map((period) => (
-            <tr key={period}>
-              <td className="border px-2 py-3 bg-gray-50 text-xs text-gray-600 whitespace-nowrap">
-                {PERIOD_LABELS[period]}
-              </td>
-              {weekDates.map((d, i) => {
-                const dateStr = toDateStr(d);
-                const cell = getCell(dateStr, period);
-                return (
-                  <td
-                    key={i}
-                    className={`border px-2 py-3 ${cellStyle(cell)}`}
-                    onClick={() => handleCellClick(dateStr, period)}
-                  >
-                    {cellText(cell)}
+      {loading ? (
+        <Box sx={{ textAlign: "center", py: 4 }}><CircularProgress size={24} /></Box>
+      ) : (
+        <Box sx={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: "4px" }}>
+            <thead>
+              <tr>
+                <th style={{ width: 110, padding: "6px 8px" }} />
+                {weekDates.map((d, i) => (
+                  <th key={i} style={{ padding: "6px 4px", textAlign: "center" }}>
+                    <Box sx={{
+                      borderRadius: 2,
+                      py: 0.75,
+                      bgcolor: isToday(d) ? "primary.main" : "rgba(255,255,255,0.6)",
+                      color: isToday(d) ? "#fff" : "text.primary",
+                    }}>
+                      <Typography variant="body2" fontWeight={700}>{DAY_LABELS[i]}</Typography>
+                      <Typography variant="caption" sx={{ opacity: 0.8 }}>{toDateStr(d).slice(5)}</Typography>
+                    </Box>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {PERIODS.map((period) => (
+                <tr key={period}>
+                  <td style={{ padding: "4px 0" }}>
+                    <Box sx={{
+                      borderRadius: 2, px: 1.5, py: 1,
+                      bgcolor: "rgba(255,255,255,0.6)",
+                      textAlign: "center",
+                    }}>
+                      <Typography variant="caption" fontWeight={700} display="block">{TIME_SLOTS[period].label}</Typography>
+                      <Typography variant="caption" color="text.secondary">{TIME_SLOTS[period].time}</Typography>
+                    </Box>
                   </td>
-                );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      {/* 범례 */}
-      <div className="flex gap-4 mt-3 text-xs text-gray-500">
-        <span><span className="inline-block w-3 h-3 bg-white border mr-1" />예약가능</span>
-        <span><span className="inline-block w-3 h-3 bg-yellow-100 border mr-1" />대기중</span>
-        <span><span className="inline-block w-3 h-3 bg-red-100 border mr-1" />예약완료</span>
-      </div>
-    </div>
+                  {weekDates.map((d, i) => {
+                    const dateStr = toDateStr(d);
+                    const cell = getCell(dateStr, period);
+                    const style = cellColor(cell);
+                    return (
+                      <td key={i} style={{ padding: "4px" }}>
+                        <Tooltip
+                          title={role === "student" && !cell ? "클릭하여 예약 신청" : ""}
+                          placement="top"
+                        >
+                          <Box
+                            onClick={() => handleCellClick(dateStr, period)}
+                            sx={{
+                              borderRadius: 2,
+                              py: 1.5,
+                              textAlign: "center",
+                              bgcolor: style.bg,
+                              color: style.color,
+                              cursor: style.cursor,
+                              fontWeight: 600,
+                              fontSize: "0.75rem",
+                              border: "1px solid rgba(255,255,255,0.5)",
+                              transition: "all 0.15s",
+                              "&:hover": role === "student" && !cell ? {
+                                bgcolor: "rgba(49,130,246,0.15)",
+                                transform: "scale(1.02)",
+                              } : {},
+                            }}
+                          >
+                            {cellText(cell)}
+                          </Box>
+                        </Tooltip>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Box>
+      )}
+    </Box>
   );
 }
