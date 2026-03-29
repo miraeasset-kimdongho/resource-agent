@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { getReservations, createReservation, cancelReservation } from "../api/reservations";
+import { getSpaceAvailability } from "../api/spaces";
+import { createReservation, cancelReservation } from "../api/reservations";
 
 const PERIODS = [1, 2, 3, 4, 5, 6, 7, 8];
 const PERIOD_LABELS = {
@@ -46,12 +47,10 @@ export default function WeeklyTimetable({ space, role, userId }) {
   const fetchReservations = async () => {
     setLoading(true);
     try {
-      const { data } = await getReservations();
-      // 해당 공간 + 이번 주 예약만 필터
-      const weekStrs = weekDates.map(toDateStr);
-      setReservations(
-        data.filter((r) => r.space_id === space.id && weekStrs.includes(r.date))
-      );
+      const from = toDateStr(weekDates[0]);
+      const to = toDateStr(weekDates[4]);
+      const { data } = await getSpaceAvailability(space.id, from, to);
+      setReservations(data);
     } finally {
       setLoading(false);
     }
@@ -66,10 +65,22 @@ export default function WeeklyTimetable({ space, role, userId }) {
 
     if (existing) {
       // 본인 pending 예약 → 취소
-      if (existing.user_id === userId && existing.status === "pending") {
+      if (existing.is_mine && existing.status === "pending") {
         if (!confirm("예약을 취소하시겠습니까?")) return;
-        await cancelReservation(existing.id);
-        fetchReservations();
+        // 취소하려면 실제 예약 ID가 필요 — 취소 전용 API 호출
+        try {
+          const { getReservations } = await import("../api/reservations");
+          const { data: myList } = await getReservations();
+          const mine = myList.find(
+            (r) => r.space_id === space.id && r.date === dateStr && r.period === period && r.status === "pending"
+          );
+          if (mine) {
+            await cancelReservation(mine.id);
+            fetchReservations();
+          }
+        } catch (err) {
+          alert(err.response?.data?.detail || "취소 실패");
+        }
       }
       return;
     }
@@ -86,16 +97,16 @@ export default function WeeklyTimetable({ space, role, userId }) {
 
   const cellStyle = (cell) => {
     if (!cell) return "bg-white hover:bg-blue-50 cursor-pointer text-gray-400 text-xs";
-    const s = cell.status;
-    if (s === "approved") return "bg-red-100 text-red-700 text-xs font-medium cursor-default";
-    if (s === "pending") return "bg-yellow-100 text-yellow-700 text-xs font-medium cursor-pointer";
+    const { status, is_mine } = cell;
+    if (status === "approved") return `bg-red-100 text-red-700 text-xs font-medium ${is_mine ? "cursor-pointer" : "cursor-default"}`;
+    if (status === "pending") return `bg-yellow-100 text-yellow-700 text-xs font-medium ${is_mine ? "cursor-pointer" : "cursor-default"}`;
     return "bg-gray-100 text-gray-400 text-xs cursor-default";
   };
 
   const cellText = (cell) => {
     if (!cell) return "예약가능";
-    if (cell.status === "approved") return "예약완료";
-    if (cell.status === "pending") return "대기중";
+    if (cell.status === "approved") return cell.is_mine ? "예약완료(나)" : "예약완료";
+    if (cell.status === "pending") return cell.is_mine ? "대기중(나)" : "대기중";
     return "-";
   };
 

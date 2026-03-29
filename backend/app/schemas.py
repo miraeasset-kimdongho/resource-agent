@@ -77,3 +77,11 @@ class ReservationOut(BaseModel):
     version: int
 
     model_config = {"from_attributes": True}
+
+
+# ── Availability ─────────────────────────────────────
+class SlotAvailability(BaseModel):
+    date: date
+    period: int
+    status: str   # "pending" | "approved"
+    is_mine: bool
