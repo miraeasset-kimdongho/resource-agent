@@ -1,0 +1,10 @@
+[build]
+builder = "nixpacks"
+buildCommand = "npm run build"
+
+[build.nixpacksConfig]
+providers = ["node"]
+
+[deploy]
+startCommand = "npx serve -s dist -l $PORT"
+healthcheckPath = "/"
