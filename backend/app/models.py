@@ -11,7 +11,7 @@ class User(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, nullable=False)
     email = Column(String, unique=True, nullable=False)
-    password = Column(String, nullable=False)  # POC: 평문 저장
+    password = Column(String, nullable=False)  # bcrypt 해시
     role = Column(String, CheckConstraint("role IN ('student','teacher')"), nullable=False)
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
 
@@ -39,7 +39,7 @@ class Reservation(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     space_id = Column(Integer, ForeignKey("spaces.id"), nullable=False)
     date = Column(Date, nullable=False)
-    period = Column(Integer, CheckConstraint("period BETWEEN 1 AND 8"), nullable=False)
+    period = Column(Integer, CheckConstraint("period BETWEEN 1 AND 5"), nullable=False)
     status = Column(
         String,
         CheckConstraint("status IN ('pending','approved','rejected','cancelled')"),
