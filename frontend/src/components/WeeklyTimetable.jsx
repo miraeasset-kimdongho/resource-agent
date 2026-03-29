@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
-import { Box, Paper, Typography, Chip, IconButton, Tooltip, CircularProgress } from "@mui/material";
+import { Box, Typography, IconButton, Tooltip, CircularProgress } from "@mui/material";
 import { ChevronLeft, ChevronRight } from "@mui/icons-material";
 import { useSnackbar } from "notistack";
-import { getReservations, createReservation, cancelReservation } from "../api/reservations";
+import { createReservation, cancelReservation, getReservations } from "../api/reservations";
+import { getSpaceAvailability } from "../api/spaces";
 import { PERIODS, TIME_SLOTS } from "../constants/timeSlots";
 
 const DAY_LABELS = ["월", "화", "수", "목", "금"];
@@ -39,12 +40,25 @@ export default function WeeklyTimetable({ space, role, userId }) {
   const fetchReservations = async () => {
     setLoading(true);
     try {
-      const { data } = await getReservations();
-      const weekStrs = weekDates.map(toDateStr);
-      setReservations(data.filter((r) => r.space_id === space.id && weekStrs.includes(r.date)));
+      const from = toDateStr(weekDates[0]);
+      const to = toDateStr(weekDates[4]);
+      const { data } = await getSpaceAvailability(space.id, from, to);
+      setReservations(data);
     } finally {
       setLoading(false);
     }
+  };
+
+  const prevWeek = () => {
+    const d = new Date(baseDate);
+    d.setDate(d.getDate() - 7);
+    setBaseDate(d);
+  };
+
+  const nextWeek = () => {
+    const d = new Date(baseDate);
+    d.setDate(d.getDate() + 7);
+    setBaseDate(d);
   };
 
   const getCell = (dateStr, period) =>
@@ -55,22 +69,20 @@ export default function WeeklyTimetable({ space, role, userId }) {
     const existing = getCell(dateStr, period);
 
     if (existing) {
-      // 본인 pending 예약 → 취소
       if (existing.is_mine && existing.status === "pending") {
-        if (!confirm("예약을 취소하시겠습니까?")) return;
-        // 취소하려면 실제 예약 ID가 필요 — 취소 전용 API 호출
+        if (!window.confirm("예약을 취소하시겠습니까?")) return;
         try {
-          const { getReservations } = await import("../api/reservations");
           const { data: myList } = await getReservations();
           const mine = myList.find(
             (r) => r.space_id === space.id && r.date === dateStr && r.period === period && r.status === "pending"
           );
           if (mine) {
             await cancelReservation(mine.id);
+            enqueueSnackbar("🗑 예약이 취소되었습니다", { variant: "info" });
             fetchReservations();
           }
         } catch (err) {
-          alert(err.response?.data?.detail || "취소 실패");
+          enqueueSnackbar(`❌ ${err.response?.data?.detail || "취소 실패"}`, { variant: "error" });
         }
       }
       return;
@@ -87,25 +99,17 @@ export default function WeeklyTimetable({ space, role, userId }) {
     }
   };
 
-  const cellStyle = (cell) => {
-    if (!cell) return "bg-white hover:bg-blue-50 cursor-pointer text-gray-400 text-xs";
-    const { status, is_mine } = cell;
-    if (status === "approved") return `bg-red-100 text-red-700 text-xs font-medium ${is_mine ? "cursor-pointer" : "cursor-default"}`;
-    if (status === "pending") return `bg-yellow-100 text-yellow-700 text-xs font-medium ${is_mine ? "cursor-pointer" : "cursor-default"}`;
-    return "bg-gray-100 text-gray-400 text-xs cursor-default";
-  };
-
-  const cellText = (cell) => {
-    if (!cell) return "예약가능";
-    if (cell.status === "approved") return cell.is_mine ? "예약완료(나)" : "예약완료";
-    if (cell.status === "pending") return cell.is_mine ? "대기중(나)" : "대기중";
-    return "-";
+  const cellColor = (cell) => {
+    if (!cell) return { bg: "rgba(255,255,255,0.7)", color: "text.secondary", cursor: "pointer" };
+    if (cell.status === "approved") return { bg: "rgba(254,202,202,0.8)", color: "#b91c1c", cursor: cell.is_mine ? "pointer" : "default" };
+    if (cell.status === "pending") return { bg: "rgba(254,240,138,0.8)", color: "#92400e", cursor: cell.is_mine ? "pointer" : "default" };
+    return { bg: "rgba(229,231,235,0.6)", color: "text.disabled", cursor: "default" };
   };
 
   const cellText = (cell) => {
     if (!cell) return "🟢 예약가능";
-    if (cell.status === "approved") return "🔴 예약완료";
-    if (cell.status === "pending") return "🟡 대기중";
+    if (cell.status === "approved") return cell.is_mine ? "🔴 내 예약" : "🔴 예약완료";
+    if (cell.status === "pending") return cell.is_mine ? "🟡 대기중(나)" : "🟡 대기중";
     return "⚫ 취소됨";
   };
 
