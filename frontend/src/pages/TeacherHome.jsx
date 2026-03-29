@@ -1,22 +1,25 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { Box, Paper, Typography, Chip, AppBar, Toolbar, Button, IconButton, Table, TableBody, TableCell, TableHead, TableRow, ToggleButton, ToggleButtonGroup } from "@mui/material";
+import { Logout, SpaceDashboard } from "@mui/icons-material";
+import { useSnackbar } from "notistack";
 import { getReservations, updateReservationStatus } from "../api/reservations";
+import { TIME_SLOTS } from "../constants/timeSlots";
 
-const STATUS_LABEL = {
-  pending: { text: "대기중", cls: "bg-yellow-100 text-yellow-700" },
-  approved: { text: "승인완료", cls: "bg-green-100 text-green-700" },
-  rejected: { text: "거절됨", cls: "bg-red-100 text-red-700" },
-  cancelled: { text: "취소됨", cls: "bg-gray-100 text-gray-500" },
+const STATUS = {
+  pending:   { label: "⏳ 대기중",   color: "warning" },
+  approved:  { label: "✅ 승인완료", color: "success" },
+  rejected:  { label: "❌ 거절됨",   color: "error" },
+  cancelled: { label: "🚫 취소됨",   color: "default" },
 };
 
 export default function TeacherHome() {
   const navigate = useNavigate();
+  const { enqueueSnackbar } = useSnackbar();
   const [reservations, setReservations] = useState([]);
   const [filter, setFilter] = useState("pending");
 
-  useEffect(() => {
-    fetchAll();
-  }, []);
+  useEffect(() => { fetchAll(); }, []);
 
   const fetchAll = async () => {
     const { data } = await getReservations();
@@ -26,97 +29,91 @@ export default function TeacherHome() {
   const handleStatus = async (r, newStatus) => {
     try {
       await updateReservationStatus(r.id, { status: newStatus, version: r.version });
+      enqueueSnackbar(
+        newStatus === "approved" ? `✅ ${r.space?.name} 예약을 승인했어요` : `❌ 예약을 거절했어요`,
+        { variant: newStatus === "approved" ? "success" : "error" }
+      );
       fetchAll();
     } catch (err) {
-      alert(err.response?.data?.detail || "처리 실패");
+      enqueueSnackbar(`⚠️ ${err.response?.data?.detail || "처리 실패"}`, { variant: "warning" });
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem("token");
-    navigate("/login");
-  };
-
+  const logout = () => { localStorage.removeItem("token"); navigate("/login"); };
   const filtered = filter === "all" ? reservations : reservations.filter((r) => r.status === filter);
+  const pendingCount = reservations.filter((r) => r.status === "pending").length;
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b px-6 py-3 flex justify-between items-center">
-        <h1 className="text-lg font-bold">예약 관리 (선생님)</h1>
-        <div className="flex gap-3">
-          <button onClick={() => navigate("/spaces")} className="text-sm text-blue-600 hover:underline">
-            공간 관리
-          </button>
-          <button onClick={logout} className="text-sm text-gray-500 hover:underline">로그아웃</button>
-        </div>
-      </header>
+    <Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
+      <AppBar position="sticky" elevation={0} sx={{
+        bgcolor: "rgba(255,255,255,0.72)", backdropFilter: "blur(20px)",
+        borderBottom: "1px solid rgba(0,0,0,0.06)", color: "text.primary",
+      }}>
+        <Toolbar>
+          <SpaceDashboard sx={{ mr: 1, color: "primary.main" }} />
+          <Typography variant="h6" sx={{ flexGrow: 1 }}>예약 관리</Typography>
+          <Button size="small" onClick={() => navigate("/spaces")} sx={{ mr: 1 }}>🏫 공간 관리</Button>
+          <IconButton size="small" onClick={logout}><Logout fontSize="small" /></IconButton>
+        </Toolbar>
+      </AppBar>
 
-      <div className="max-w-4xl mx-auto p-6">
-        {/* 필터 탭 */}
-        <div className="flex gap-2 mb-4">
-          {["pending", "all"].map((s) => (
-            <button
-              key={s}
-              onClick={() => setFilter(s)}
-              className={`px-4 py-1.5 rounded-full text-sm border ${
-                filter === s ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600"
-              }`}
-            >
-              {s === "pending" ? "대기중" : "전체"}
-            </button>
-          ))}
-        </div>
+      <Box sx={{ maxWidth: 900, mx: "auto", p: 3 }}>
+        {/* 필터 */}
+        <Box sx={{ mb: 3, display: "flex", alignItems: "center", gap: 2 }}>
+          <ToggleButtonGroup value={filter} exclusive onChange={(_, v) => v && setFilter(v)} size="small">
+            <ToggleButton value="pending" sx={{ borderRadius: "12px !important", px: 2 }}>
+              ⏳ 대기중 {pendingCount > 0 && <Chip label={pendingCount} size="small" color="warning" sx={{ ml: 1, height: 18, fontSize: "0.65rem" }} />}
+            </ToggleButton>
+            <ToggleButton value="all" sx={{ borderRadius: "12px !important", px: 2 }}>전체</ToggleButton>
+          </ToggleButtonGroup>
+        </Box>
 
         {filtered.length === 0 ? (
-          <p className="text-center text-gray-400 mt-16">예약 내역이 없습니다</p>
+          <Paper sx={{ p: 6, textAlign: "center", borderRadius: 4 }}>
+            <Typography variant="h4" mb={1}>🎉</Typography>
+            <Typography color="text.secondary">처리할 예약이 없어요</Typography>
+          </Paper>
         ) : (
-          <table className="w-full bg-white rounded-xl shadow text-sm">
-            <thead className="bg-gray-50 text-gray-600">
-              <tr>
-                <th className="px-4 py-3 text-left">학생</th>
-                <th className="px-4 py-3">공간</th>
-                <th className="px-4 py-3">날짜</th>
-                <th className="px-4 py-3">교시</th>
-                <th className="px-4 py-3">상태</th>
-                <th className="px-4 py-3">처리</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((r) => (
-                <tr key={r.id} className="border-t">
-                  <td className="px-4 py-3">{r.user?.name ?? "-"}</td>
-                  <td className="px-4 py-3 text-center">{r.space?.name}</td>
-                  <td className="px-4 py-3 text-center">{r.date}</td>
-                  <td className="px-4 py-3 text-center">{r.period}교시</td>
-                  <td className="px-4 py-3 text-center">
-                    <span className={`px-2 py-1 rounded-full text-xs ${STATUS_LABEL[r.status]?.cls}`}>
-                      {STATUS_LABEL[r.status]?.text}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    {r.status === "pending" && (
-                      <div className="flex gap-2 justify-center">
-                        <button
-                          onClick={() => handleStatus(r, "approved")}
-                          className="text-xs bg-green-500 text-white px-2 py-1 rounded hover:bg-green-600"
-                        >
-                          승인
-                        </button>
-                        <button
-                          onClick={() => handleStatus(r, "rejected")}
-                          className="text-xs bg-red-400 text-white px-2 py-1 rounded hover:bg-red-500"
-                        >
-                          거절
-                        </button>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <Paper sx={{ borderRadius: 4, overflow: "hidden" }}>
+            <Table>
+              <TableHead sx={{ bgcolor: "rgba(49,130,246,0.06)" }}>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 700 }}>학생</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>공간</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>날짜</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>시간</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>상태</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>처리</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {filtered.map((r) => (
+                  <TableRow key={r.id} hover>
+                    <TableCell>👤 {r.user?.name ?? "-"}</TableCell>
+                    <TableCell>🏫 {r.space?.name}</TableCell>
+                    <TableCell>{r.date}</TableCell>
+                    <TableCell>
+                      <Typography variant="body2" fontWeight={600}>{TIME_SLOTS[r.period]?.label}</Typography>
+                      <Typography variant="caption" color="text.secondary">{TIME_SLOTS[r.period]?.time}</Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Chip label={STATUS[r.status]?.label} color={STATUS[r.status]?.color} size="small" />
+                    </TableCell>
+                    <TableCell>
+                      {r.status === "pending" && (
+                        <Box sx={{ display: "flex", gap: 1 }}>
+                          <Button size="small" variant="contained" color="success" onClick={() => handleStatus(r, "approved")}>승인</Button>
+                          <Button size="small" variant="outlined" color="error" onClick={() => handleStatus(r, "rejected")}>거절</Button>
+                        </Box>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Paper>
         )}
-      </div>
-    </div>
+      </Box>
+    </Box>
   );
 }

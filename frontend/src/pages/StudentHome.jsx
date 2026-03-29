@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { Box, Paper, Typography, Chip, AppBar, Toolbar, Button, IconButton } from "@mui/material";
+import { CalendarMonth, Logout } from "@mui/icons-material";
 import { getSpaces } from "../api/spaces";
 import WeeklyTimetable from "../components/WeeklyTimetable";
 
@@ -22,52 +24,61 @@ export default function StudentHome() {
     });
   }, []);
 
-  const logout = () => {
-    localStorage.removeItem("token");
-    navigate("/login");
-  };
+  const logout = () => { localStorage.removeItem("token"); navigate("/login"); };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b px-6 py-3 flex justify-between items-center">
-        <h1 className="text-lg font-bold">공간 예약 시스템</h1>
-        <div className="flex gap-3">
-          <button onClick={() => navigate("/my-reservations")} className="text-sm text-blue-600 hover:underline">
-            내 예약
-          </button>
-          <button onClick={logout} className="text-sm text-gray-500 hover:underline">로그아웃</button>
-        </div>
-      </header>
+    <Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
+      {/* 헤더 */}
+      <AppBar position="sticky" elevation={0} sx={{
+        bgcolor: "rgba(255,255,255,0.72)",
+        backdropFilter: "blur(20px)",
+        borderBottom: "1px solid rgba(0,0,0,0.06)",
+        color: "text.primary",
+      }}>
+        <Toolbar>
+          <CalendarMonth sx={{ mr: 1, color: "primary.main" }} />
+          <Typography variant="h6" sx={{ flexGrow: 1 }}>공간 예약</Typography>
+          <Button size="small" onClick={() => navigate("/my-reservations")} sx={{ mr: 1 }}>
+            📋 내 예약
+          </Button>
+          <IconButton size="small" onClick={logout}><Logout fontSize="small" /></IconButton>
+        </Toolbar>
+      </AppBar>
 
-      <div className="max-w-5xl mx-auto p-6">
-        {/* 공간 탭 */}
-        <div className="flex gap-2 mb-6 flex-wrap">
+      <Box sx={{ maxWidth: 900, mx: "auto", p: 3 }}>
+        {/* 공간 선택 탭 */}
+        <Box sx={{ display: "flex", gap: 1, mb: 3, flexWrap: "wrap" }}>
           {spaces.map((s) => (
-            <button
+            <Chip
               key={s.id}
-              onClick={() => setSelected(s)}
-              className={`px-4 py-2 rounded-full text-sm border transition ${
-                selected?.id === s.id
-                  ? "bg-blue-600 text-white border-blue-600"
-                  : "bg-white text-gray-700 hover:border-blue-400"
-              } ${s.status === "maintenance" ? "opacity-50 cursor-not-allowed" : ""}`}
+              label={s.status === "maintenance" ? `🔧 ${s.name}` : `🏫 ${s.name}`}
+              onClick={() => s.status !== "maintenance" && setSelected(s)}
+              color={selected?.id === s.id ? "primary" : "default"}
               disabled={s.status === "maintenance"}
-            >
-              {s.name} {s.status === "maintenance" && "(점검중)"}
-            </button>
+              sx={{ fontWeight: 600, px: 1 }}
+            />
           ))}
-        </div>
+        </Box>
 
         {selected && (
-          <div className="bg-white rounded-xl shadow p-6">
-            <h2 className="text-base font-semibold mb-1">{selected.name}</h2>
-            {selected.location && (
-              <p className="text-xs text-gray-400 mb-4">{selected.location}</p>
-            )}
+          <Paper sx={{ p: 3, borderRadius: 4 }}>
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="h6">🏫 {selected.name}</Typography>
+              {selected.location && (
+                <Typography variant="body2" color="text.secondary">📍 {selected.location}</Typography>
+              )}
+            </Box>
             <WeeklyTimetable space={selected} role="student" userId={userId} />
-          </div>
+          </Paper>
         )}
-      </div>
-    </div>
+
+        {spaces.length === 0 && (
+          <Paper sx={{ p: 6, textAlign: "center", borderRadius: 4 }}>
+            <Typography variant="h4" mb={1}>🏫</Typography>
+            <Typography color="text.secondary">등록된 공간이 없어요</Typography>
+          </Paper>
+        )}
+      </Box>
+    </Box>
   );
 }

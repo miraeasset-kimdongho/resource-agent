@@ -1,42 +1,48 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { Box, Paper, Typography, TextField, Button, AppBar, Toolbar, IconButton, List, ListItem, ListItemText, ListItemSecondaryAction, Chip } from "@mui/material";
+import { ArrowBack, Add, Edit, Delete } from "@mui/icons-material";
+import { useSnackbar } from "notistack";
 import { getSpaces, createSpace, updateSpace, deleteSpace } from "../api/spaces";
 
 export default function SpaceManage() {
   const navigate = useNavigate();
+  const { enqueueSnackbar } = useSnackbar();
   const [spaces, setSpaces] = useState([]);
   const [form, setForm] = useState({ name: "", location: "", capacity: "" });
   const [editing, setEditing] = useState(null);
 
-  useEffect(() => {
-    fetchSpaces();
-  }, []);
+  useEffect(() => { fetchSpaces(); }, []);
 
-  const fetchSpaces = async () => {
-    const { data } = await getSpaces();
-    setSpaces(data);
-  };
+  const fetchSpaces = async () => { const { data } = await getSpaces(); setSpaces(data); };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const payload = { name: form.name, location: form.location || undefined, capacity: form.capacity ? parseInt(form.capacity) : undefined };
+    const payload = {
+      name: form.name,
+      location: form.location || undefined,
+      capacity: form.capacity ? parseInt(form.capacity) : undefined,
+    };
     try {
       if (editing) {
         await updateSpace(editing.id, payload);
+        enqueueSnackbar("✏️ 공간이 수정됐어요", { variant: "success" });
         setEditing(null);
       } else {
         await createSpace(payload);
+        enqueueSnackbar("🏫 새 공간이 등록됐어요!", { variant: "success" });
       }
       setForm({ name: "", location: "", capacity: "" });
       fetchSpaces();
     } catch (err) {
-      alert(err.response?.data?.detail || "저장 실패");
+      enqueueSnackbar(`❌ ${err.response?.data?.detail || "저장 실패"}`, { variant: "error" });
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!confirm("공간을 삭제하시겠습니까?")) return;
+  const handleDelete = async (id, name) => {
+    if (!window.confirm(`'${name}' 공간을 삭제하시겠습니까?`)) return;
     await deleteSpace(id);
+    enqueueSnackbar("🗑️ 공간이 삭제됐어요", { variant: "info" });
     fetchSpaces();
   };
 
@@ -46,71 +52,70 @@ export default function SpaceManage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b px-6 py-3 flex justify-between items-center">
-        <h1 className="text-lg font-bold">공간 관리</h1>
-        <button onClick={() => navigate("/teacher")} className="text-sm text-blue-600 hover:underline">← 예약 관리</button>
-      </header>
+    <Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
+      <AppBar position="sticky" elevation={0} sx={{
+        bgcolor: "rgba(255,255,255,0.72)", backdropFilter: "blur(20px)",
+        borderBottom: "1px solid rgba(0,0,0,0.06)", color: "text.primary",
+      }}>
+        <Toolbar>
+          <IconButton onClick={() => navigate("/teacher")} edge="start"><ArrowBack /></IconButton>
+          <Typography variant="h6" sx={{ ml: 1 }}>🏫 공간 관리</Typography>
+        </Toolbar>
+      </AppBar>
 
-      <div className="max-w-2xl mx-auto p-6 space-y-6">
+      <Box sx={{ maxWidth: 600, mx: "auto", p: 3, display: "flex", flexDirection: "column", gap: 3 }}>
         {/* 등록/수정 폼 */}
-        <div className="bg-white rounded-xl shadow p-5">
-          <h2 className="text-sm font-semibold mb-3">{editing ? "공간 수정" : "공간 등록"}</h2>
-          <form onSubmit={handleSubmit} className="flex gap-2 flex-wrap">
-            <input
-              className="border rounded px-3 py-2 text-sm flex-1 min-w-32"
-              placeholder="공간명 *"
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              required
-            />
-            <input
-              className="border rounded px-3 py-2 text-sm flex-1 min-w-32"
-              placeholder="위치 (예: 3층)"
-              value={form.location}
-              onChange={(e) => setForm({ ...form, location: e.target.value })}
-            />
-            <input
-              className="border rounded px-3 py-2 text-sm w-24"
-              placeholder="수용인원"
-              type="number"
-              value={form.capacity}
-              onChange={(e) => setForm({ ...form, capacity: e.target.value })}
-            />
-            <button className="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700" type="submit">
-              {editing ? "수정" : "등록"}
-            </button>
-            {editing && (
-              <button type="button" onClick={() => { setEditing(null); setForm({ name: "", location: "", capacity: "" }); }}
-                className="border px-4 py-2 rounded text-sm text-gray-600 hover:bg-gray-100">
-                취소
-              </button>
-            )}
-          </form>
-        </div>
+        <Paper sx={{ p: 3, borderRadius: 4 }} component="form" onSubmit={handleSubmit}>
+          <Typography variant="subtitle1" fontWeight={700} mb={2}>
+            {editing ? "✏️ 공간 수정" : "➕ 공간 등록"}
+          </Typography>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+            <TextField size="small" label="공간명 *" value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+            <TextField size="small" label="위치 (예: 3층 과학실)" value={form.location}
+              onChange={(e) => setForm({ ...form, location: e.target.value })} />
+            <TextField size="small" label="수용 인원" type="number" value={form.capacity}
+              onChange={(e) => setForm({ ...form, capacity: e.target.value })} />
+            <Box sx={{ display: "flex", gap: 1 }}>
+              <Button fullWidth variant="contained" type="submit">
+                {editing ? "수정하기" : <><Add fontSize="small" sx={{ mr: 0.5 }} />등록하기</>}
+              </Button>
+              {editing && (
+                <Button variant="outlined" onClick={() => { setEditing(null); setForm({ name: "", location: "", capacity: "" }); }}>
+                  취소
+                </Button>
+              )}
+            </Box>
+          </Box>
+        </Paper>
 
         {/* 공간 목록 */}
-        <div className="bg-white rounded-xl shadow">
-          {spaces.map((s) => (
-            <div key={s.id} className="flex items-center justify-between px-5 py-4 border-b last:border-0">
-              <div>
-                <span className="font-medium text-sm">{s.name}</span>
-                {s.location && <span className="text-xs text-gray-400 ml-2">{s.location}</span>}
-                {s.status === "maintenance" && (
-                  <span className="ml-2 text-xs text-orange-500">(점검중)</span>
-                )}
-              </div>
-              <div className="flex gap-2">
-                <button onClick={() => startEdit(s)} className="text-xs text-blue-500 hover:underline">수정</button>
-                <button onClick={() => handleDelete(s.id)} className="text-xs text-red-400 hover:underline">삭제</button>
-              </div>
-            </div>
-          ))}
-          {spaces.length === 0 && (
-            <p className="text-center text-gray-400 text-sm py-8">등록된 공간이 없습니다</p>
+        <Paper sx={{ borderRadius: 4, overflow: "hidden" }}>
+          {spaces.length === 0 ? (
+            <Box sx={{ p: 4, textAlign: "center" }}>
+              <Typography color="text.secondary">등록된 공간이 없어요 😅</Typography>
+            </Box>
+          ) : (
+            <List disablePadding>
+              {spaces.map((s, i) => (
+                <ListItem key={s.id} divider={i < spaces.length - 1} sx={{ py: 1.5 }}>
+                  <ListItemText
+                    primary={<Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                      <Typography fontWeight={600}>🏫 {s.name}</Typography>
+                      {s.status === "maintenance" && <Chip label="점검중" size="small" color="warning" />}
+                    </Box>}
+                    secondary={s.location && `📍 ${s.location}${s.capacity ? ` · 정원 ${s.capacity}명` : ""}`}
+                  />
+                  <ListItemSecondaryAction>
+                    <IconButton size="small" onClick={() => startEdit(s)} sx={{ mr: 0.5 }}><Edit fontSize="small" /></IconButton>
+                    <IconButton size="small" color="error" onClick={() => handleDelete(s.id, s.name)}><Delete fontSize="small" /></IconButton>
+                  </ListItemSecondaryAction>
+                </ListItem>
+              ))}
+            </List>
           )}
-        </div>
-      </div>
-    </div>
+        </Paper>
+      </Box>
+    </Box>
   );
 }
